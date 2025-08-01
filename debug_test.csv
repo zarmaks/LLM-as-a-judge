@@ -1,0 +1,8 @@
+Current User Question,Assistant Answer,Fragment Texts,Conversation History
+What is machine learning?,ML is AI subset,ML is branch of AI,
+What is machine learning?,ML is specific approach,ML is branch of AI,"User: What is machine learning?
+Assistant: ML is AI subset"
+What is machine learning?,Example: image recognition,ML is branch of AI,"User: What is machine learning?
+Assistant: ML is AI subset
+User: How different?
+Assistant: ML is specific approach"
