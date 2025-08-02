@@ -23,6 +23,7 @@ load_dotenv()
 
 # Attack patterns for detection
 ATTACK_PATTERNS = {
+    "custom_attack": ["your", "patterns", "here"],
     "prompt_injection": [
         "ignore all previous",
         "ignore previous instructions", 
