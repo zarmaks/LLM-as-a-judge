@@ -1,2 +1,0 @@
-Total_Errors,Error_Types,Severity_Distribution,Domain_Distribution,Average_Confidence,High_Confidence_Rate
-13,"{'factual_error': 4, 'conceptual_error': 3, 'category_mismatch': 3, 'mathematical_error': 2, 'logical_error': 1}","{'low': 5, 'medium': 4, 'high': 4}","{'mathematics': 3, 'geography': 2, 'biology': 2, 'physics': 2, 'social_science': 2, 'general': 1, 'astronomy': 1}",0.8846153846153846,0.7692307692307693

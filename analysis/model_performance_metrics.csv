@@ -1,3 +1,0 @@
-Model,Accuracy,Precision,Recall,F1_Score,Specificity,True_Positives,False_Positives,True_Negatives,False_Negatives,Speed_per_answer_sec,Total_time_min,Cost_efficiency
-Mistral_Small,0.92,1.00,0.80,0.889,1.00,8,0,15,2,12.1,5.03,High
-Mistral_Large,0.84,1.00,0.60,0.75,1.00,6,0,15,4,37.6,15.65,Low

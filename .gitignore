@@ -38,6 +38,3 @@ reports/*.json
 # OS
 .DS_Store
 Thumbs.db
-
-# Archive directory (development files)
-archive/

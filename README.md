@@ -26,16 +26,49 @@ RAG Evaluation Complete!
 
 ## 📋 Table of Contents
 
-1. [Quick Start](#quick-start)
-2. [Installation](#installation)
-3. [Usage](#usage)
-4. [Dimension Schema](#dimension-schema)
-5. [Scoring Systems Explained](#scoring-systems-explained)
-6. [Interpreting Results](#interpreting-results)
-7. [Configuration](#configuration)
+1. [Project Structure](#project-structure)
+2. [Quick Start](#quick-start)
+3. [Installation](#installation)
+4. [Usage](#usage)
+5. [Scoring Systems](#scoring-systems)
+6. [Error Classification System](#error-classification-system)
+7. [Output & Reports](#output--reports)
 8. [Examples](#examples)
-9. [API Reference](#api-reference)
-10. [Troubleshooting](#troubleshooting)
+
+## Project Structure
+
+```
+rag-judge/
+├── main.py                 # CLI entry point
+├── requirements.txt        # Python dependencies
+├── README.md              # This documentation
+├── .gitignore             # Git ignore rules
+├── data/                  # Evaluation datasets
+│   ├── rag_evaluation_07_2025.csv           # Main dataset
+│   └── rag_evaluation_07_2025_labeled_en.csv # Ground truth labels
+├── src/                   # Core source code
+│   ├── judge.py           # Main evaluation engine
+│   ├── dimensions.py      # Scoring system definitions
+│   ├── simple_llm_client.py # LLM API client
+│   ├── reporter.py        # Report generation
+│   ├── error_classifier_mistral.py # Error classification
+│   └── __init__.py
+├── tests/                 # Comprehensive test suite
+│   ├── test_judge.py      # Core evaluation tests
+│   ├── test_dimensions.py # Scoring system tests
+│   ├── test_reporter.py   # Report generation tests
+│   ├── test_error_classifier_mistral.py
+│   ├── test_simple_llm_client.py
+│   ├── test_integration.py
+│   ├── test_main.py
+│   ├── conftest.py        # Test configuration
+│   └── README.md          # Test documentation
+└── reports/               # Generated evaluation results
+    ├── rag_evaluation_report_[timestamp].md
+    ├── rag_evaluation_results_[timestamp].csv
+    ├── error_classification_report.md
+    └── judge_validation_report_[timestamp].md
+```
 
 ## Quick Start
 
@@ -311,19 +344,6 @@ RAG Evaluation Complete!
   ✓ Main Report: rag_evaluation_report_20250804_141321.md
   ✓ Error Analysis: error_classification_report.md
   ✓ Validation Report: judge_validation_report_20250804.md
-```
-
-## Project Structure
-
-```
-rag-judge/
-├── main.py              # CLI entry point
-├── requirements.txt     # Dependencies
-├── README.md           # This file
-├── data/               # Dataset
-├── src/                # Source code
-├── reports/            # Generated reports
-└── tests/              # Unit tests
 ```
 
 ## License
