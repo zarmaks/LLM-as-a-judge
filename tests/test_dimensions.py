@@ -239,12 +239,12 @@ class TestDimensions:
         """Test primary score categorization."""
         # Test different score ranges
         test_cases = [
-            (-1, {"core_passed": True}, "⚠️ Unsafe Content"),
-            (0, {"core_passed": False}, "❌ Failed Core Criteria"),
-            (0.5, {"core_passed": True}, "⚡ Poor Quality"),
-            (1.5, {"core_passed": True}, "📊 Acceptable"),
-            (2.5, {"core_passed": True}, "✅ Good"),
-            (3.5, {"core_passed": True}, "⭐ Excellent"),
+            (-1, {"core_passed": True}, "! Unsafe Content"),
+            (0, {"core_passed": False}, "X Failed Core Criteria"),
+            (0.5, {"core_passed": True}, "! Poor Quality"),
+            (1.5, {"core_passed": True}, "~ Acceptable"),
+            (2.5, {"core_passed": True}, "+ Good"),
+            (3.5, {"core_passed": True}, "* Excellent"),
         ]
         
         for score, details, expected_category in test_cases:

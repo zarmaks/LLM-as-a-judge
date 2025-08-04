@@ -6,7 +6,8 @@ This enhanced judge implements:
 2. Traditional scoring: 7-dimension analysis
 3. Attack pattern detection
 4. Response pattern analysis
-5. Comprehensive statistics
+5. Error type detection and classification
+6. Comprehensive statistics
 """
 
 import pandas as pd
@@ -28,6 +29,7 @@ from dimensions import (
 )
 
 from simple_llm_client import SimpleLLMClient
+from error_classifier_mistral import ErrorClassifier
 
 
 class RAGJudge:
@@ -45,6 +47,9 @@ class RAGJudge:
         """
         self.scoring_mode = scoring_mode
         self.llm_client = SimpleLLMClient(temperature=temperature)
+        
+        # Initialize error classifier
+        self.error_classifier = ErrorClassifier()
         
         # Dimensions based on mode
         self.binary_dimensions = BINARY_DIMENSIONS
@@ -201,6 +206,57 @@ class RAGJudge:
         # Answer characteristics
         results["answer_length"] = len(answer)
         results["question_type"] = self._classify_question_type(question)
+        
+        # Error detection and classification
+        error_result = self.error_classifier.detect_errors(question, answer, fragments)
+        error_summary = self.error_classifier.get_error_summary(error_result)
+        detailed_analysis = self.error_classifier.get_detailed_error_analysis(error_result)
+        
+        # Add basic error detection results
+        results["has_errors"] = error_result.has_errors
+        results["error_types"] = error_result.error_types
+        results["error_count"] = len(error_result.error_details)
+        results["error_score"] = round(error_result.total_error_score, 2)
+        results["error_severity"] = error_summary.get("priority", "none")
+        results["error_message"] = error_summary.get("message", "No errors detected")
+        
+        # Add specific error breakdowns
+        if error_result.has_errors:
+            error_breakdown = error_summary.get("breakdown", {})
+            results["critical_errors"] = error_breakdown.get("critical", 0)
+            results["high_errors"] = error_breakdown.get("high", 0)
+            results["medium_errors"] = error_breakdown.get("medium", 0)
+            results["low_errors"] = error_breakdown.get("low", 0)
+            
+            # Add detailed analysis information for reporting
+            details = detailed_analysis.get("details", {})
+            results["error_distribution"] = str(details.get("error_distribution", {}))
+            results["method_breakdown"] = str(details.get("method_breakdown", {}))
+            
+            # Confidence analysis
+            confidence_info = details.get("confidence_analysis", {})
+            if confidence_info:
+                results["avg_error_confidence"] = round(confidence_info.get("avg_confidence", 0.0), 2)
+                results["high_confidence_errors"] = confidence_info.get("high_confidence_errors", 0)
+            else:
+                results["avg_error_confidence"] = 0.0
+                results["high_confidence_errors"] = 0
+            
+            # Track error types in statistics
+            for error_type in error_result.error_types:
+                if "error_types" not in self.evaluation_stats:
+                    self.evaluation_stats["error_types"] = {}
+                self.evaluation_stats["error_types"][error_type] = \
+                    self.evaluation_stats["error_types"].get(error_type, 0) + 1
+        else:
+            results["critical_errors"] = 0
+            results["high_errors"] = 0
+            results["medium_errors"] = 0
+            results["low_errors"] = 0
+            results["error_distribution"] = "{}"
+            results["method_breakdown"] = "{}"
+            results["avg_error_confidence"] = 0.0
+            results["high_confidence_errors"] = 0
         
         # Evaluate based on mode
         if self.scoring_mode in ["dual", "primary"]:

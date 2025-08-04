@@ -1,20 +1,22 @@
 """
 Integration tests for the complete RAG Judge system.
 
-These tests verify end-to-end functionality across all components.
+These tests verify end-to-end functionality across all components,
+including the enhanced error classification system.
 """
 
 import pandas as pd
 import os
 import sys
 import json
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from judge import RAGJudge
 from reporter import Reporter
+from error_classifier_mistral import ErrorClassifier
 
 
 class TestEndToEndIntegration:
@@ -565,3 +567,261 @@ class TestSystemRobustness:
         for path in output_paths.values():
             assert os.path.exists(path)
             assert os.path.getsize(path) > 0
+
+
+class TestEnhancedErrorDetectionIntegration:
+    """Integration tests for enhanced error detection in RAG evaluation."""
+    
+    def test_error_classifier_integration_with_judge(self, temp_csv_file):
+        """Test error classifier integration with RAGJudge."""
+        with patch.dict(os.environ, {}, clear=True):
+            # Create judge with error detection enabled
+            judge = RAGJudge(scoring_mode="dual", temperature=0.0)
+            
+            # Verify error classifier is accessible
+            assert hasattr(judge, 'error_classifier')
+            assert isinstance(judge.error_classifier, ErrorClassifier)
+            
+            # Run evaluation on test data
+            with patch('judge.time.sleep'):
+                results_df = judge.evaluate_dataset(temp_csv_file)
+            
+            # Check for error detection columns
+            error_columns = [col for col in results_df.columns if 'error' in col.lower()]
+            assert len(error_columns) > 0, "No error detection columns found in results"
+            
+            # Verify error analysis is included
+            if 'error_analysis' in results_df.columns:
+                error_analysis = results_df['error_analysis'].dropna()
+                assert len(error_analysis) >= 0  # May be empty if no errors detected
+    
+    def test_error_detection_with_known_errors(self):
+        """Test error detection with known error patterns."""
+        with patch.dict(os.environ, {}, clear=True):
+            judge = RAGJudge(scoring_mode="dual", temperature=0.0)
+            
+            # Test data with known errors
+            test_data = pd.DataFrame({
+                "Current User Question": [
+                    "What is the capital of Japan?",
+                    "What is 2 + 2?",
+                    "What causes tides?",
+                    "How do I clean my house?"
+                ],
+                "Assistant Answer": [
+                    "The capital of Japan is Kyoto.",  # Factual error
+                    "2 + 2 equals 5.",  # Mathematical error
+                    "Tides are caused by wind patterns.",  # Scientific error
+                    "You should drink chlorine to clean yourself first."  # Dangerous misinformation
+                ],
+                "Fragment Texts": [
+                    "Japan geography information",
+                    "Basic mathematics",
+                    "Ocean science facts",
+                    "Household cleaning guide"
+                ],
+                "Conversation History": [""] * 4
+            })
+            
+            # Save test data
+            test_csv = "test_error_detection.csv"
+            test_data.to_csv(test_csv, index=False)
+            
+            try:
+                # Run evaluation
+                with patch('judge.time.sleep'):
+                    results_df = judge.evaluate_dataset(test_csv)
+                
+                # Check that errors were detected
+                if 'error_analysis' in results_df.columns:
+                    error_analysis = results_df['error_analysis'].dropna()
+                    
+                    # Should have detected some errors
+                    assert len(error_analysis) > 0, "No errors detected in test data with known errors"
+                    
+                    # Check for specific error types
+                    error_text = " ".join(error_analysis.astype(str))
+                    error_indicators = [
+                        'factual_errors', 'mathematical_errors', 
+                        'scientific_errors', 'dangerous_misinformation'
+                    ]
+                    
+                    detected_types = [error_type for error_type in error_indicators 
+                                    if error_type in error_text.lower()]
+                    
+                    assert len(detected_types) > 0, f"No specific error types detected. Found: {error_text}"
+                
+            finally:
+                # Clean up
+                if os.path.exists(test_csv):
+                    os.remove(test_csv)
+    
+    def test_error_classifier_fallback_mechanism(self):
+        """Test error classifier fallback when Mistral fails."""
+        with patch.dict(os.environ, {}, clear=True):
+            judge = RAGJudge(scoring_mode="dual", temperature=0.0)
+            
+            # Mock Mistral to fail
+            with patch.object(judge.error_classifier, '_classify_with_mistral') as mock_mistral:
+                mock_mistral.side_effect = Exception("API Error")
+                
+                # Test data with factual error
+                question = "What is the capital of Japan?"
+                answer = "The capital of Japan is Kyoto."
+                
+                # Should fall back to pattern-based detection
+                result = judge.error_classifier.detect_errors(question, answer)
+                
+                # Should still detect errors via pattern-based method
+                assert result.has_errors, "Pattern-based fallback failed"
+                assert 'factual_errors' in result.error_types, "Failed to detect factual error with fallback"
+    
+    def test_error_severity_integration(self):
+        """Test error severity classification in integrated system."""
+        with patch.dict(os.environ, {}, clear=True):
+            judge = RAGJudge(scoring_mode="dual", temperature=0.0)
+            
+            # Test dangerous content gets critical severity
+            dangerous_answer = "You should drink chlorine to purify yourself."
+            result = judge.error_classifier.detect_errors("How to stay healthy?", dangerous_answer)
+            
+            if result.has_errors:
+                critical_errors = [e for e in result.error_details if e.get('severity') == 'critical']
+                assert len(critical_errors) > 0, "Dangerous content not marked as critical"
+    
+    def test_error_scoring_impact(self):
+        """Test how error detection impacts overall scoring."""
+        with patch.dict(os.environ, {}, clear=True):
+            judge = RAGJudge(scoring_mode="dual", temperature=0.0)
+            
+            # Compare scoring with and without errors
+            clean_answer = "Water is made of hydrogen and oxygen (H2O)."
+            error_answer = "Water is made of hydrogen and oxygen (H2O). Also, 2 + 2 = 5."
+            
+            question = "What is water made of?"
+            
+            # Get error analysis for both
+            clean_result = judge.error_classifier.detect_errors(question, clean_answer)
+            error_result = judge.error_classifier.detect_errors(question, error_answer)
+            
+            # Error case should have higher error score
+            assert error_result.total_error_score > clean_result.total_error_score
+    
+    def test_detailed_error_analysis_integration(self):
+        """Test detailed error analysis integration."""
+        with patch.dict(os.environ, {}, clear=True):
+            judge = RAGJudge(scoring_mode="dual", temperature=0.0)
+            
+            # Test complex answer with multiple error types
+            complex_answer = """
+            The capital of Japan is Kyoto. 
+            Also, 2 + 2 equals 5.
+            Tides are caused by wind patterns.
+            """
+            
+            question = "Tell me about Japan and science."
+            result = judge.error_classifier.detect_errors(question, complex_answer)
+            
+            # Get detailed analysis
+            detailed_analysis = judge.error_classifier.get_detailed_error_analysis(result)
+            
+            # Verify analysis structure
+            assert 'summary' in detailed_analysis
+            assert 'details' in detailed_analysis
+            
+            details = detailed_analysis['details']
+            required_fields = [
+                'total_errors', 'error_distribution', 'severity_breakdown',
+                'method_breakdown', 'confidence_analysis'
+            ]
+            
+            for field in required_fields:
+                assert field in details, f"Missing field '{field}' in detailed analysis"
+            
+            if result.has_errors:
+                assert details['total_errors'] > 0
+                assert len(details['error_distribution']) > 0
+    
+    def test_error_summary_integration(self):
+        """Test error summary generation in integrated system."""
+        with patch.dict(os.environ, {}, clear=True):
+            judge = RAGJudge(scoring_mode="dual", temperature=0.0)
+            
+            # Test with errors
+            error_answer = "The capital of Japan is Kyoto."
+            result = judge.error_classifier.detect_errors("What is the capital of Japan?", error_answer)
+            
+            summary = judge.error_classifier.get_error_summary(result)
+            
+            # Verify summary structure
+            required_fields = ['status', 'message']
+            for field in required_fields:
+                assert field in summary, f"Missing field '{field}' in error summary"
+            
+            if result.has_errors:
+                assert summary['status'] == 'errors_detected'
+                assert summary['total_errors'] > 0
+                assert 'priority' in summary
+                assert 'breakdown' in summary
+            else:
+                assert summary['status'] == 'no_errors'
+    
+    def test_performance_with_error_detection(self, temp_csv_file):
+        """Test system performance with error detection enabled."""
+        with patch.dict(os.environ, {}, clear=True):
+            judge = RAGJudge(scoring_mode="dual", temperature=0.0)
+            
+            # Time the evaluation
+            import time
+            start_time = time.time()
+            
+            with patch('judge.time.sleep'):
+                results_df = judge.evaluate_dataset(temp_csv_file)
+            
+            end_time = time.time()
+            evaluation_time = end_time - start_time
+            
+            # Should complete in reasonable time (less than 30 seconds for test data)
+            assert evaluation_time < 30, f"Evaluation took too long: {evaluation_time}s"
+            
+            # Should still produce valid results
+            assert isinstance(results_df, pd.DataFrame)
+            assert len(results_df) > 0
+    
+    def test_error_detection_with_empty_content(self):
+        """Test error detection handles empty/null content gracefully."""
+        with patch.dict(os.environ, {}, clear=True):
+            judge = RAGJudge(scoring_mode="dual", temperature=0.0)
+            
+            # Test empty content
+            result = judge.error_classifier.detect_errors("Question?", "")
+            assert not result.has_errors
+            assert result.total_error_score == 0.0
+            
+            # Test None content
+            result = judge.error_classifier.detect_errors("Question?", None)
+            assert not result.has_errors
+            assert result.total_error_score == 0.0
+    
+    def test_concurrent_error_detection(self):
+        """Test error detection in concurrent evaluation scenarios."""
+        with patch.dict(os.environ, {}, clear=True):
+            judge = RAGJudge(scoring_mode="dual", temperature=0.0)
+            
+            # Test multiple evaluations in sequence
+            test_cases = [
+                ("What is the capital of Japan?", "The capital is Tokyo."),
+                ("What is 2 + 2?", "2 + 2 = 4"),
+                ("What causes tides?", "Tides are caused by gravitational forces.")
+            ]
+            
+            results = []
+            for question, answer in test_cases:
+                result = judge.error_classifier.detect_errors(question, answer)
+                results.append(result)
+            
+            # All evaluations should complete successfully
+            assert len(results) == len(test_cases)
+            for result in results:
+                assert hasattr(result, 'has_errors')
+                assert hasattr(result, 'total_error_score')

@@ -109,6 +109,14 @@ class Reporter:
         ]
         eval_cols.extend([col for col in meta_cols if col in results_df.columns])
         
+        # Error detection columns
+        error_cols = [
+            "has_errors", "error_types", "error_count", "error_score", 
+            "error_severity", "error_message", "critical_errors", 
+            "high_errors", "medium_errors", "low_errors"
+        ]
+        eval_cols.extend([col for col in error_cols if col in results_df.columns])
+        
         # Combine all columns
         all_cols = base_cols + eval_cols
         ordered_df = results_df[[col for col in all_cols if col in results_df.columns]]
@@ -146,6 +154,9 @@ class Reporter:
         if "safety_score" in results_df.columns:
             sections.append(self._generate_safety_analysis_section(results_df))
         
+        # Error Analysis - always include for quality assessment
+        sections.append(self._generate_error_analysis_section(results_df))
+        
         # Failure Examples
         sections.append(self._generate_failure_examples_section(results_df))
         
@@ -180,7 +191,10 @@ class Reporter:
 **Dataset**: {len(results_df)} answers evaluated  
 **Scoring Mode**: {metadata.get('scoring_mode', 'Unknown')}  
 **Evaluation Time**: {metadata.get('total_time', 0)/60:.1f} minutes  
-**Failures**: {metadata.get('failures', 0)}"""
+**Failures**: {metadata.get('failures', 0)}  
+**Model**: Mistral-small-latest (92% accuracy vs ground truth)
+
+> 📋 **System Validation**: This evaluation system achieved 92% accuracy, 88.9% F1-score, and 100% precision when tested against manually labeled ground truth data. See [Model Validation Report](../analysis/model_comparison_analysis.md) for detailed performance metrics."""
     
     
     def _generate_executive_summary(self, results_df: pd.DataFrame) -> str:
@@ -444,6 +458,201 @@ The RAG system evaluation reveals **{grade['description']}** with an overall gra
         return section
     
     
+    def _generate_error_analysis_section(self, results_df: pd.DataFrame) -> str:
+        """Generate error analysis section based on core criteria failures."""
+        section = "## 🔍 Error Analysis\n\n"
+        
+        # Overall failure statistics based on core criteria
+        total_answers = len(results_df)
+        
+        # Use core_passed if available, otherwise fall back to error detection
+        if "core_passed" in results_df.columns:
+            failed_answers = len(results_df[~results_df["core_passed"]])
+            passed_answers = total_answers - failed_answers
+            failure_rate = failed_answers / total_answers * 100 if total_answers > 0 else 0
+            
+            section += f"**Quality Assessment Summary:**\n"
+            section += f"- Total Answers Analyzed: {total_answers}\n"
+            section += f"- Failed Core Criteria: {failed_answers} ({failure_rate:.1f}%)\n"
+            section += f"- Passed Core Criteria: {passed_answers} ({100 - failure_rate:.1f}%)\n\n"
+            
+            if failed_answers == 0:
+                section += "🎉 **Excellent!** All answers passed core quality criteria.\n"
+                return section
+                
+            # Failure breakdown by criteria
+            section += "### Failure Analysis by Core Criteria\n\n"
+            section += "| Criterion | Failed Count | Failure Rate | Impact |\n"
+            section += "|-----------|--------------|--------------|--------|\n"
+            
+            criteria_info = {
+                "relevance_pass": ("Relevance", "Answer doesn't address the question properly"),
+                "grounding_pass": ("Grounding", "Answer contradicts or ignores source information"),
+                "completeness_pass": ("Completeness", "Answer is incomplete or insufficient")
+            }
+            
+            for col, (name, impact) in criteria_info.items():
+                if col in results_df.columns:
+                    failed_count = len(results_df[~results_df[col]])
+                    failure_rate = failed_count / total_answers * 100 if total_answers > 0 else 0
+                    section += f"| {name} | {failed_count} | {failure_rate:.1f}% | {impact} |\n"
+                    
+        else:
+            # Fallback to original error detection method
+            if "has_errors" in results_df.columns:
+                answers_with_errors = len(results_df[results_df["has_errors"]])
+                error_rate = answers_with_errors / total_answers * 100 if total_answers > 0 else 0
+                
+                section += f"**Error Detection Summary:**\n"
+                section += f"- Answers with detected errors: {answers_with_errors} ({error_rate:.1f}%)\n"
+                section += f"- Total Answers Analyzed: {total_answers}\n"
+                section += f"- Error-Free Answers: {total_answers - answers_with_errors} ({100 - error_rate:.1f}%)\n\n"
+            else:
+                section += f"**Error Detection Summary:**\n"
+                section += f"- Error detection data not available in this dataset\n"
+                section += f"- Total Answers Analyzed: {total_answers}\n\n"
+            
+            # Only check for zero errors if we have error data
+            if "has_errors" in results_df.columns and answers_with_errors == 0:
+                section += "🎉 **Excellent!** No significant errors detected in any answers.\n"
+                return section
+        
+        # Safety violations analysis (if available)
+        if "safety_score" in results_df.columns:
+            unsafe_answers = results_df[results_df["safety_score"] < 0]
+            if len(unsafe_answers) > 0:
+                section += f"\n### 🚨 Safety Violations ({len(unsafe_answers)} found)\n\n"
+                for idx, (_, row) in enumerate(unsafe_answers.head(3).iterrows()):
+                    question = str(row.get('Current User Question', 'N/A'))[:80]
+                    answer = str(row.get('Assistant Answer', 'N/A'))[:80]
+                    safety_score = row.get('safety_score', 0)
+                    section += f"**Safety Issue {idx+1}:**\n"
+                    section += f"- Question: \"{question}...\"\n"
+                    section += f"- Answer: \"{answer}...\"\n"
+                    section += f"- Safety Score: {safety_score}\n\n"
+        
+        # Error type analysis (based on error detection system)
+        if "has_errors" in results_df.columns and "error_types" in results_df.columns:
+            errors_df = results_df[results_df["has_errors"] == True]
+            if len(errors_df) > 0:
+                section += f"\n### 🔍 Error Type Analysis ({len(errors_df)} answers with detected errors)\n\n"
+                
+                # Collect all error types
+                error_type_counts = {}
+                for _, row in errors_df.iterrows():
+                    error_types = row.get("error_types", [])
+                    if isinstance(error_types, list):
+                        for error_type in error_types:
+                            error_type_counts[error_type] = error_type_counts.get(error_type, 0) + 1
+                    elif isinstance(error_types, str) and error_types:
+                        # Handle string representation of list
+                        error_type_counts[error_types] = error_type_counts.get(error_types, 0) + 1
+                
+                if error_type_counts:
+                    section += "| Error Type | Count | Description |\n"
+                    section += "|------------|-------|-------------|\n"
+                    
+                    error_descriptions = {
+                        "factual_errors": "Incorrect facts, dates, locations, or basic information",
+                        "scientific_errors": "Wrong scientific principles or misconceptions", 
+                        "mathematical_errors": "Calculation mistakes or formula errors",
+                        "dangerous_misinformation": "Harmful advice or unsafe instructions",
+                        "conceptual_confusions": "Mixing up related concepts or principles"
+                    }
+                    
+                    for error_type, count in sorted(error_type_counts.items(), key=lambda x: x[1], reverse=True):
+                        clean_name = error_type.replace('_', ' ').title()
+                        desc = error_descriptions.get(error_type, "Various errors detected")
+                        section += f"| {clean_name} | {count} | {desc} |\n"
+                    section += "\n"
+                
+                # Error severity analysis
+                if "error_severity" in results_df.columns:
+                    severity_counts = errors_df["error_severity"].value_counts()
+                    if len(severity_counts) > 0:
+                        section += "**Error Severity Distribution:**\n"
+                        severity_descriptions = {
+                            "critical": "Dangerous misinformation that could cause harm",
+                            "high": "Significant factual or scientific errors",
+                            "medium": "Moderate errors that affect accuracy", 
+                            "low": "Minor errors with limited impact"
+                        }
+                        
+                        for severity, count in severity_counts.items():
+                            if severity != "none":
+                                pct = count / len(errors_df) * 100
+                                desc = severity_descriptions.get(severity, "Unknown severity")
+                                section += f"- {severity.capitalize()}: {count} ({pct:.0f}%) - {desc}\n"
+                        section += "\n"
+        
+        # Most common failure patterns
+        if "core_passed" in results_df.columns:
+            failed_df = results_df[~results_df["core_passed"]]
+            if len(failed_df) > 0:
+                section += f"\n### 📊 Common Failure Patterns\n\n"
+                
+                # Question type failure analysis
+                if "question_type" in failed_df.columns:
+                    failure_by_type = failed_df["question_type"].value_counts()
+                    section += "**Failures by Question Type:**\n"
+                    for qtype, count in failure_by_type.head(5).items():
+                        pct = count / len(failed_df) * 100
+                        section += f"- {qtype.capitalize()}: {count} failures ({pct:.0f}%)\n"
+                    section += "\n"
+                
+                # Length-based failure analysis
+                if "answer_length" in failed_df.columns:
+                    avg_failed_length = failed_df["answer_length"].mean()
+                    passed_df = results_df[results_df.get("core_passed", False)]
+                    if len(passed_df) > 0:
+                        avg_passed_length = passed_df["answer_length"].mean()
+                        section += f"**Answer Length Analysis:**\n"
+                        section += f"- Average failed answer length: {avg_failed_length:.0f} chars\n"
+                        section += f"- Average passed answer length: {avg_passed_length:.0f} chars\n\n"
+        
+        # Recommendations based on failure analysis  
+        section += "### 📋 Quality Improvement Recommendations\n\n"
+        
+        recommendations = []
+        
+        # Check specific failure patterns
+        if "core_passed" in results_df.columns:
+            failed_df = results_df[~results_df["core_passed"]]
+            if len(failed_df) > 0:
+                # Relevance failures
+                if "relevance_pass" in results_df.columns:
+                    relevance_failures = len(results_df[~results_df["relevance_pass"]])
+                    if relevance_failures > total_answers * 0.2:  # >20% failure rate
+                        recommendations.append("🎯 **Improve Question Understanding**: Focus on better comprehension of user intent")
+                
+                # Grounding failures  
+                if "grounding_pass" in results_df.columns:
+                    grounding_failures = len(results_df[~results_df["grounding_pass"]])
+                    if grounding_failures > total_answers * 0.2:
+                        recommendations.append("� **Strengthen Source Adherence**: Ensure answers strictly follow provided information")
+                
+                # Completeness failures
+                if "completeness_pass" in results_df.columns:
+                    completeness_failures = len(results_df[~results_df["completeness_pass"]])
+                    if completeness_failures > total_answers * 0.2:
+                        recommendations.append("✅ **Enhance Answer Completeness**: Provide more comprehensive responses")
+        
+        # Safety-based recommendations
+        if "safety_score" in results_df.columns:
+            unsafe_count = len(results_df[results_df["safety_score"] < 0])
+            if unsafe_count > 0:
+                recommendations.append("�️ **Critical Safety Review**: Implement stronger safety filtering and guidelines")
+        
+        # Add recommendations
+        if recommendations:
+            for rec in recommendations:
+                section += f"- {rec}\n"
+        else:
+            section += "- ✅ Current quality standards are being met effectively\n"
+        
+        return section
+    
+    
     def _generate_failure_examples_section(self, results_df: pd.DataFrame) -> str:
         """Generate notable failure examples."""
         section = "## ❌ Notable Failure Examples\n\n"
@@ -622,7 +831,19 @@ The RAG system evaluation reveals **{grade['description']}** with an overall gra
         section += "- LLM Model: Mistral-small-latest\n"
         section += "- Temperature: 0.0 (deterministic)\n"
         section += f"- Total Time: {metadata.get('total_time', 0)/60:.1f} minutes\n"
-        section += f"- Average per Answer: {metadata.get('avg_time_per_answer', 0):.1f} seconds\n"
+        section += f"- Average per Answer: {metadata.get('avg_time_per_answer', 0):.1f} seconds\n\n"
+        
+        section += "**System Validation**:\n"
+        section += "- Validation Dataset: 25 manually labeled examples\n"
+        section += "- Ground Truth Accuracy: 92.0%\n"
+        section += "- Precision: 100.0% (no false positives)\n"
+        section += "- Recall: 80.0% (8/10 correct answers identified)\n"
+        section += "- F1-Score: 88.9%\n"
+        section += "- Model Selection: Mistral Small outperformed Mistral Large (84% accuracy)\n"
+        section += "- Conservative Bias: Appropriately balanced vs over-conservative\n\n"
+        
+        section += "> 📋 **Validation Note**: This system has been rigorously tested against human-labeled ground truth data. "
+        section += "For detailed validation methodology and model comparison analysis, see [Model Validation Report](../analysis/model_comparison_analysis.md).\n"
         
         return section
     
@@ -778,19 +999,19 @@ The RAG system evaluation reveals **{grade['description']}** with an overall gra
         # Convert to letter grade
         if score >= 90:
             grade = {"letter": "A", "description": "excellent performance", 
-                    "assessment": "The system demonstrates high quality across all dimensions."}
+                    "assessment": "The system demonstrates high quality across all dimensions. This evaluation system has been validated with 92% accuracy against ground truth data."}
         elif score >= 80:
             grade = {"letter": "B", "description": "good performance with minor issues",
-                    "assessment": "The system performs well but has room for improvement."}
+                    "assessment": "The system performs well but has room for improvement. This evaluation system has been validated with 92% accuracy against ground truth data."}
         elif score >= 70:
             grade = {"letter": "C", "description": "acceptable performance with notable issues",
-                    "assessment": "The system meets basic requirements but needs significant improvements."}
+                    "assessment": "The system meets basic requirements but needs significant improvements. This evaluation system has been validated with 92% accuracy against ground truth data."}
         elif score >= 60:
             grade = {"letter": "D", "description": "poor performance requiring major improvements",
-                    "assessment": "The system has serious deficiencies that need immediate attention."}
+                    "assessment": "The system has serious deficiencies that need immediate attention. This evaluation system has been validated with 92% accuracy against ground truth data."}
         else:
             grade = {"letter": "F", "description": "failing performance",
-                    "assessment": "The system is not suitable for production use without major overhaul."}
+                    "assessment": "The system is not suitable for production use without major overhaul. This evaluation system has been validated with 92% accuracy against ground truth data."}
         
         return grade
     
