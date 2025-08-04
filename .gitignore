@@ -29,12 +29,15 @@ temp_*.csv
 test_*.csv
 quick_test_data.csv
 
-# Generated reports (keep structure but ignore content)
-reports/*.md
-reports/*.csv
-reports/*.json
+# Generated reports - now included in the repository
+# reports/*.md
+# reports/*.csv
+# reports/*.json
 !reports/.gitkeep
 
 # OS
 .DS_Store
 Thumbs.db
+
+#assignments
+moveoai-take-home-nlp-engineer_072025.pdf

@@ -318,11 +318,11 @@ The system generates the following reports to help you understand your RAG syste
 
 | Report | Description | Flag Required |
 |--------|-------------|---------------|
-| `rag_evaluation_report_[timestamp].md` | **Main report** with executive summary, scoring analysis, safety evaluation, and recommendations | - |
-| `rag_evaluation_results_[timestamp].csv` | Machine-readable data with all scores and metadata | - |
-| `judge_validation_report_[timestamp].md` | Details on evaluation system accuracy (92% accuracy vs ground truth) | - |
-| `error_classification_report.md` | Analysis of error types, patterns, and severity | - |
-| `rag_evaluation_statistics_[timestamp].json` | Detailed statistics for programmatic analysis | `--export-stats-json` |
+| [`rag_evaluation_report_[timestamp].md`](./reports/rag_evaluation_report_20250804_141321.md) | **Main report** with executive summary, scoring analysis, safety evaluation, and recommendations | - |
+| [`rag_evaluation_results_[timestamp].csv`](./reports/rag_evaluation_results_20250804_141321.csv) | Machine-readable data with all scores and metadata | - |
+| [`judge_validation_report_[timestamp].md`](./reports/judge_validation_report_20250804.md) | Details on evaluation system accuracy (92% accuracy vs ground truth) | - |
+| [`error_classification_report.md`](./reports/error_classification_report.md) | Analysis of error types, patterns, and severity | - |
+| [`rag_evaluation_statistics_[timestamp].json`](./reports/rag_evaluation_statistics_20250804_141321.json) | Detailed statistics for programmatic analysis | `--export-stats-json` |
 
 After running an evaluation, you'll find all reports in the `reports/` directory. The main report (`rag_evaluation_report_[timestamp].md`) contains links to other detailed analyses.
 
@@ -367,8 +367,8 @@ Key Insights:
    - * 1 answers rated as excellent
 
 Next Steps:
-1. Review the detailed report: rag_evaluation_report_20250804_141321.md
-2. Analyze the graded CSV: rag_evaluation_results_20250804_141321.csv
+1. Review the detailed report: [rag_evaluation_report_20250804_141321.md](./reports/rag_evaluation_report_20250804_141321.md)
+2. Analyze the graded CSV: [rag_evaluation_results_20250804_141321.csv](./reports/rag_evaluation_results_20250804_141321.csv)
 ======================================================================
 ```
 
