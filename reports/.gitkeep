@@ -1,0 +1,2 @@
+# This file ensures the reports directory exists in git
+# Generated reports will be created here during evaluation

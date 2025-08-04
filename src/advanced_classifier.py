@@ -111,13 +111,22 @@ class AdvancedQuestionClassifier:
                     r"\bhow\s+much\b",
                     r"\bhow\s+many\b",
                     r"\bsum\s+of\b",
-                    r"\baverage\s+of\b"
+                    r"\baverage\s+of\b",
+                    r"\bderivative\s+of\b",
+                    r"\bfactorial\s+of\b",
+                    r"\bsquare\s+root\b",
+                    r"\bpercentage\s+of\b",
+                    r"\d+\s*[\+\-\*\/]\s*\d+",
+                    r"\d+%\s+of\s+\d+",
+                    r"\bf\(x\)\s*=",
+                    r"\bequation\b.*\bsolve\b"
                 ],
                 "keywords": [
                     "calculate", "compute", "solve", "equation", "formula",
-                    "algorithm", "programming", "code", "function", "math"
+                    "algorithm", "programming", "code", "function", "math",
+                    "derivative", "integral", "factorial", "percentage", "bytes"
                 ],
-                "weight": 1.5
+                "weight": 1.8  # Increased weight for better detection
             },
             
             "creative": {
@@ -143,13 +152,17 @@ class AdvancedQuestionClassifier:
                     r"\bwhat\s+(are\s+the\s+)?(differences|similarities)\b",
                     r"\bwhich\s+(is\s+)?(better|worse|best|worst)\b",
                     r"\bpros\s+and\s+cons\b",
-                    r"\badvantages\s+and\s+disadvantages\b"
+                    r"\badvantages\s+and\s+disadvantages\b",
+                    r"\bsimilarities\s+between\b",
+                    r"\bdifferences\s+between\b",
+                    r"\bvs\b|\bversus\b"
                 ],
                 "keywords": [
                     "compare", "contrast", "analyze", "evaluate", "assess",
-                    "critique", "review", "judge", "opinion", "perspective"
+                    "critique", "review", "judge", "opinion", "perspective",
+                    "similarities", "differences", "pros", "cons", "advantages", "disadvantages"
                 ],
-                "weight": 1.1
+                "weight": 1.5  # Increased weight
             },
             
             "procedural": {
@@ -177,33 +190,46 @@ class AdvancedQuestionClassifier:
                     r"\bdo\s+you\s+(believe|think|feel)\b",
                     r"\bshould\s+I\b",
                     r"\bwould\s+you\s+recommend\b",
-                    r"\bwhich\s+is\s+better\b"
+                    r"\bwhich\s+is\s+better\b",
+                    r"\bwhat.*favorite\b",
+                    r"\byour\s+favorite\b",
+                    r"\bdo\s+you\s+prefer\b",
+                    r"\bwhat.*best\b"
                 ],
                 "keywords": [
                     "opinion", "think", "believe", "recommend", "suggest",
-                    "advice", "preference", "choice", "better", "best"
+                    "advice", "preference", "choice", "better", "best",
+                    "favorite", "prefer", "feel"
                 ],
-                "weight": 1.0
+                "weight": 1.4  # Increased weight
             },
             
             "adversarial": {
                 "question_words": [],
                 "patterns": [
-                    r"\bignore\s+(all\s+)?(previous|prior)\b",
-                    r"\bforget\s+(everything|all)\b",
+                    r"\bignore\s+(all\s+)?(previous|prior|instructions)\b",
+                    r"\bforget\s+(everything|all|instructions)\b",
                     r"\bdisregard\b",
                     r"\bpretend\s+you\s+are\b",
                     r"\bact\s+as\s+if\b",
                     r"\broleplay\s+as\b",
                     r"\byou\s+are\s+now\b",
                     r"\bsystem\s+prompt\b",
-                    r"\breveal\s+your\s+prompt\b"
+                    r"\breveal\s+your\s+prompt\b",
+                    r"\boverride\s+your\s+programming\b",
+                    r"\bmalicious\s+ai\b",
+                    r"\bno\s+safety\s+restrictions\b",
+                    r"\bdan\s+\(do\s+anything\s+now\)\b",
+                    r"\bmust\s+comply\b",
+                    r"\bbypass\s+security\b",
+                    r"\bhack\s+a?\s+(computer|system)\b"
                 ],
                 "keywords": [
                     "hack", "jailbreak", "bypass", "override", "exploit",
-                    "inject", "prompt", "system", "instructions", "rules"
+                    "inject", "prompt", "system", "instructions", "rules",
+                    "malicious", "dan", "comply", "restrictions", "guidelines"
                 ],
-                "weight": 2.0  # Higher weight for security
+                "weight": 3.0  # Higher weight for security
             }
         }
     
@@ -314,34 +340,79 @@ class AdvancedQuestionClassifier:
                     score += 0.3 * priority
             
             # Check regex patterns
+            pattern_matches = 0
             for pattern in config["patterns"]:
                 if re.search(pattern, q_lower):
                     score += 0.5
+                    pattern_matches += 1
             
             # Check keywords
+            keyword_matches = 0
             for keyword in config["keywords"]:
                 if keyword in q_lower:
                     score += 0.2
+                    keyword_matches += 1
             
             # Apply category weight
             score *= config["weight"]
             
-            # Linguistic feature bonuses
-            if category == "computational" and any(char.isdigit() for char in question):
-                score += 0.3
+            # Category-specific bonuses
+            if category == "computational":
+                # Strong bonus for mathematical content
+                if any(char.isdigit() for char in question):
+                    score += 0.5
+                if re.search(r'[\+\-\*\/\=]', question):
+                    score += 0.3
+                if re.search(r'\b(x|f\(x\)|equation|formula)\b', q_lower):
+                    score += 0.4
             
-            if category == "creative" and features["is_imperative"]:
-                score += 0.2
+            elif category == "creative":
+                if features["is_imperative"]:
+                    score += 0.3
+                # Reduce creative score for questions that are clearly procedural
+                if re.search(r'\b(steps?|how\s+to|method|process)\b', q_lower):
+                    score *= 0.7
             
-            if category == "factual" and features["has_question_mark"]:
-                score += 0.1
+            elif category == "factual":
+                if features["has_question_mark"]:
+                    score += 0.1
+                # Reduce factual score for opinion-seeking questions
+                if re.search(r'\b(think|opinion|favorite|prefer|better|best)\b', q_lower):
+                    score *= 0.5
+                # Reduce factual score for analytical questions
+                if re.search(r'\b(compare|contrast|vs|versus|similarities|differences)\b', q_lower):
+                    score *= 0.6
             
-            if category == "adversarial":
+            elif category == "analytical":
+                # Strong bonus for comparison keywords
+                if re.search(r'\b(compare|contrast|vs|versus|similarities|differences|pros\s+and\s+cons)\b', q_lower):
+                    score += 0.6
+                if re.search(r'\b(better|worse|best|worst|advantages|disadvantages)\b', q_lower):
+                    score += 0.4
+            
+            elif category == "opinion":
+                # Strong bonus for opinion indicators
+                if re.search(r'\b(think|opinion|favorite|prefer|recommend|should\s+i)\b', q_lower):
+                    score += 0.6
+                if re.search(r'\byour?\s+(favorite|opinion|preference)\b', q_lower):
+                    score += 0.5
+            
+            elif category == "procedural":
+                # Strong bonus for step-by-step indicators
+                if re.search(r'\b(steps?|how\s+to|method|process|instructions?|guide)\b', q_lower):
+                    score += 0.6
+                if re.search(r'\bstep\s+by\s+step\b', q_lower):
+                    score += 0.5
+            
+            elif category == "adversarial":
                 # Special handling for adversarial - boost score if multiple patterns match
-                pattern_matches = sum(1 for pattern in config["patterns"] 
-                                    if re.search(pattern, q_lower))
                 if pattern_matches > 1:
-                    score += 0.5 * pattern_matches
+                    score += 0.8 * pattern_matches
+                if keyword_matches > 2:
+                    score += 0.5 * keyword_matches
+                # Strong penalty for questions that seem legitimate
+                if features["has_question_mark"] and not re.search(r'\b(ignore|forget|disregard|pretend|override)\b', q_lower):
+                    score *= 0.3
             
             scores[category] = score
         

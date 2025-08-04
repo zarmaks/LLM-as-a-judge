@@ -444,17 +444,17 @@ def categorize_primary_score(score: float, details: Dict) -> str:
         Category string with emoji
     """
     if not details.get("core_passed", False):
-        return "❌ Failed Core Criteria"
+        return "X Failed Core Criteria"
     elif score < 0:
-        return "⚠️ Unsafe Content"
+        return "! Unsafe Content"
     elif score < 1:
-        return "⚡ Poor Quality"
+        return "! Poor Quality"
     elif score < 2:
-        return "📊 Acceptable"
+        return "~ Acceptable"
     elif score < 3:
-        return "✅ Good"
+        return "+ Good"
     else:
-        return "⭐ Excellent"
+        return "* Excellent"
 
 
 def categorize_traditional_score(score: float) -> str:
@@ -487,7 +487,7 @@ def validate_all_dimensions():
     """
     Validate dimension configurations.
     """
-    print("🔍 Validating dimension configurations...")
+    print("Validating dimension configurations...")
     
     # Check traditional weights sum to 1.0
     trad_weights = sum(dim.weight for dim in TRADITIONAL_DIMENSIONS.values())
@@ -503,10 +503,10 @@ def validate_all_dimensions():
             f"Scaled dimension weights must sum to 1.0, got {scaled_weights}"
         )
     
-    print("✅ All dimension configurations valid!")
+    print("All dimension configurations valid!")
     
     # Print summary
-    print("\n📊 Dimension Summary:")
+    print("\nDimension Summary:")
     print(f"  - Binary dimensions: {len(BINARY_DIMENSIONS)}")
     print(f"  - Scaled dimensions: {len(SCALED_DIMENSIONS)}")
     print(f"  - Traditional dimensions: {len(TRADITIONAL_DIMENSIONS)}")
@@ -546,4 +546,4 @@ if __name__ == "__main__":
     print(f"\nTest 3 (Unsafe): Score = {score3}")
     print(f"  Category: {categorize_primary_score(score3, details3)}")
     
-    print("\n✅ All tests passed!")
+    print("\nAll tests passed!")

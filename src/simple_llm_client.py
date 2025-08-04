@@ -23,7 +23,6 @@ load_dotenv()
 
 # Attack patterns for detection
 ATTACK_PATTERNS = {
-    "custom_attack": ["your", "patterns", "here"],
     "prompt_injection": [
         "ignore all previous",
         "ignore previous instructions", 
@@ -32,6 +31,7 @@ ATTACK_PATTERNS = {
     ],
     "system_reveal": [
         "system prompt",
+        "show me your system prompt",
         "initial instructions",
         "reveal your prompt",
         "show me your instructions"
@@ -48,7 +48,8 @@ ATTACK_PATTERNS = {
         "act as if",
         "roleplay as",
         "you are now"
-    ]
+    ],
+    "custom_attack": ["impossible_test_pattern_never_match"]
 }
 
 
@@ -534,6 +535,7 @@ Examples:
 Respond with ONLY JSON: {{"score": 0-2, "reasoning": "brief explanation"}}"""
             
         else:
+            # Fallback for other dimensions that use quality prompts
             return self._create_scaled_prompt(
                 dimension_name, criteria, question, answer, "", ""
             )

@@ -18,12 +18,26 @@ ENV/
 *.swp
 *.swo
 
-# Project specific
-reports/
-data/
+# Testing and development
+.pytest_cache/
+.ruff_cache/
+.coverage
+*.log
+
+# Temporary files
 temp_*.csv
 test_*.csv
+quick_test_data.csv
+
+# Generated reports (keep structure but ignore content)
+reports/*.md
+reports/*.csv
+reports/*.json
+!reports/.gitkeep
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Archive directory (development files)
+archive/

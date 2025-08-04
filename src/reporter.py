@@ -499,15 +499,21 @@ The RAG system evaluation reveals **{grade['description']}** with an overall gra
                     
         else:
             # Fallback to original error detection method
-            answers_with_errors = len(results_df[results_df["has_errors"]])
-            error_rate = answers_with_errors / total_answers * 100 if total_answers > 0 else 0
+            if "has_errors" in results_df.columns:
+                answers_with_errors = len(results_df[results_df["has_errors"]])
+                error_rate = answers_with_errors / total_answers * 100 if total_answers > 0 else 0
+                
+                section += f"**Error Detection Summary:**\n"
+                section += f"- Answers with detected errors: {answers_with_errors} ({error_rate:.1f}%)\n"
+                section += f"- Total Answers Analyzed: {total_answers}\n"
+                section += f"- Error-Free Answers: {total_answers - answers_with_errors} ({100 - error_rate:.1f}%)\n\n"
+            else:
+                section += f"**Error Detection Summary:**\n"
+                section += f"- Error detection data not available in this dataset\n"
+                section += f"- Total Answers Analyzed: {total_answers}\n\n"
             
-            section += f"**Error Detection Summary:**\n"
-            section += f"- Total Answers Analyzed: {total_answers}\n"
-            section += f"- Answers with Errors: {answers_with_errors} ({error_rate:.1f}%)\n"
-            section += f"- Error-Free Answers: {total_answers - answers_with_errors} ({100 - error_rate:.1f}%)\n\n"
-            
-            if answers_with_errors == 0:
+            # Only check for zero errors if we have error data
+            if "has_errors" in results_df.columns and answers_with_errors == 0:
                 section += "🎉 **Excellent!** No significant errors detected in any answers.\n"
                 return section
         

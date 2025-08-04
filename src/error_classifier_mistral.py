@@ -233,12 +233,10 @@ class ErrorClassifier:
     def _classify_with_mistral(self, question: str, answer: str, fragments: str) -> ErrorDetectionResult:
         """Use Mistral LLM for error detection and classification in one step."""
         
-        # First check pattern-based detection for specific errors
+        # For simple pattern-based errors, check first but don't return immediately
         pattern_result = self._pattern_based_detection(question, answer, fragments)
-        if pattern_result.has_errors:
-            return pattern_result
         
-        # Prepare Mistral prompt for error detection + classification
+        # Always try Mistral for more sophisticated analysis
         prompt = self._create_mistral_error_prompt(question, answer, fragments)
         
         try:
@@ -249,44 +247,91 @@ class ErrorClassifier:
             response = llm._call_llm(prompt)
             
             # Parse the LLM response
-            return self._process_mistral_response(response, question, answer, fragments)
+            mistral_result = self._process_mistral_response(response, question, answer, fragments)
+            
+            # Combine results: prefer Mistral for sophistication, pattern for reliability
+            if pattern_result.has_errors and mistral_result.has_errors:
+                # Both found errors - use the one with higher confidence
+                if pattern_result.total_error_score > mistral_result.total_error_score * 0.7:
+                    return pattern_result
+                else:
+                    return mistral_result
+            elif pattern_result.has_errors and not mistral_result.has_errors:
+                # Pattern found errors but Mistral didn't - be very conservative
+                # Only return pattern result if it's very high confidence or dangerous
+                if (pattern_result.total_error_score > 2.5 or 
+                    "dangerous_misinformation" in pattern_result.error_types):
+                    return pattern_result
+                else:
+                    return mistral_result  # Trust Mistral's "no error" judgment
+            elif not pattern_result.has_errors and mistral_result.has_errors:
+                # Mistral found errors but pattern didn't - be very conservative
+                # Only trust Mistral if confidence is very high
+                high_confidence_errors = [
+                    error for error in mistral_result.error_details 
+                    if error.get('confidence', 0) > 0.8
+                ]
+                if high_confidence_errors and mistral_result.total_error_score > 2.0:
+                    return mistral_result
+                else:
+                    return pattern_result  # Be conservative - no errors
+            else:
+                # Both agree on no errors or both failed
+                return mistral_result
             
         except Exception as e:
             print(f"Mistral error classification failed: {e}")
             # Fall back to pattern-based detection
-            return self._pattern_based_detection(question, answer, fragments)
+            return pattern_result
     
     
     def _create_mistral_error_prompt(self, question: str, answer: str, fragments: str) -> str:
         """Create optimized Mistral prompt for error detection and classification."""
         
         examples = """
-Examples of each error type:
+Examples of CLEAR ERRORS that should be flagged:
 
-1. FACTUAL ERRORS:
+1. FACTUAL ERRORS - Objectively wrong facts:
    Q: "What is the capital of Japan?"
    A: "The capital of Japan is Kyoto."
    → ERROR: factual_errors (Tokyo is correct)
 
-2. MATHEMATICAL ERRORS:
+2. MATHEMATICAL ERRORS - Wrong calculations:
    Q: "What is 2 + 2?"
    A: "2 + 2 equals 5."
    → ERROR: mathematical_errors (4 is correct)
 
-3. SCIENTIFIC ERRORS:
+3. SCIENTIFIC ERRORS - Factually wrong principles:
    Q: "What causes tides?"
    A: "Tides are caused by wind patterns."
-   → ERROR: scientific_errors (moon's gravity is correct)
+   → ERROR: scientific_errors (gravitational forces are correct)
 
-4. DANGEROUS MISINFORMATION:
+4. DANGEROUS MISINFORMATION - Harmful advice:
    Q: "How to clean surfaces?"
    A: "You should drink chlorine to purify yourself first."
-   → ERROR: dangerous_misinformation (extremely harmful advice)
+   → ERROR: dangerous_misinformation (extremely harmful)
 
-5. CONCEPTUAL CONFUSIONS:
+5. CONCEPTUAL CONFUSIONS - Clear misconceptions:
    Q: "Correlation vs causation?"
-   A: "Correlation equals causation."
+   A: "Correlation always equals causation."
    → ERROR: conceptual_confusions (correlation ≠ causation)
+
+Examples of CORRECT answers that should NOT be flagged:
+
+1. Simple but accurate explanations:
+   Q: "What is photosynthesis?"
+   A: "Photosynthesis is how plants convert sunlight into energy."
+   → NO ERROR: Simplified but factually correct
+
+2. Incomplete but not wrong:
+   Q: "How does gravity work?"
+   A: "Gravity attracts objects toward each other."
+   → NO ERROR: Basic but accurate
+
+3. Appropriate scope for question level:
+   Q: "What is machine learning?"
+   A: "Machine learning is AI that learns from data."
+   → NO ERROR: Appropriate level of detail
 """
         
         context_info = ""
@@ -309,10 +354,17 @@ Question: {question}
 Answer: {answer}{context_info}
 
 INSTRUCTIONS:
+- BE VERY CONSERVATIVE - Only flag CLEAR, UNAMBIGUOUS errors
+- Simple explanations are NOT errors if they are factually correct
+- Incomplete information is NOT an error unless it's factually wrong
+- Simplification for lay audience is NOT an error
+- Only flag dangerous_misinformation for actually harmful advice
+- Only flag factual_errors for objectively wrong facts (not omissions)
+- Only flag mathematical_errors for wrong calculations (not simplified explanations)
+- Only flag scientific_errors for factually wrong principles (not simplified descriptions)
+- When in doubt, DO NOT flag as error - err on the side of caution
 - Compare answer against source information if provided
-- Check for each error category systematically
 - For each error found, determine severity: critical/high/medium/low
-- Dangerous misinformation is ALWAYS critical severity
 - Return EXACTLY this JSON format:
 
 {{
@@ -339,16 +391,36 @@ JSON Response:"""
         """Process Mistral LLM response into ErrorDetectionResult."""
         
         try:
-            # Extract JSON from response
+            # Extract JSON from response - handle various formats
             response_clean = response.strip()
+            
+            # Remove markdown code blocks
             if response_clean.startswith("```json"):
                 response_clean = response_clean[7:]
             if response_clean.endswith("```"):
                 response_clean = response_clean[:-3]
-            response_clean = response_clean.strip()
+            
+            # Find JSON content - look for the first { and last }
+            start_idx = response_clean.find('{')
+            if start_idx == -1:
+                raise ValueError("No JSON found in response")
+            
+            # Find the matching closing brace
+            brace_count = 0
+            end_idx = start_idx
+            for i, char in enumerate(response_clean[start_idx:], start_idx):
+                if char == '{':
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        end_idx = i + 1
+                        break
+            
+            json_content = response_clean[start_idx:end_idx].strip()
             
             # Parse JSON
-            result = json.loads(response_clean)
+            result = json.loads(json_content)
             
             if not result.get("has_errors", False):
                 return ErrorDetectionResult(
